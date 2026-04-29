@@ -79,6 +79,39 @@ FC2 (10) → 输出
 
 使用MNIST手写数字数据集，包含60000张训练图片和10000张测试图片。
 
+## 部署到 Render
+
+### 1. 推送代码到 GitHub
+
+确保代码已经推送到 GitHub 仓库。
+
+### 2. 在 Render 上创建服务
+
+1. 访问 https://render.com
+2. 点击 "New +" → "Web Service"
+3. 选择你的 GitHub 仓库
+4. 配置如下：
+   - **Name**: digit-recognizer
+   - **Environment**: Python
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn app:app`
+5. 选择 **Free Plan**
+6. 点击 "Create Web Service"
+
+### 3. 部署文件说明
+
+本项目已包含 `render.yaml` 配置文件，可以一键部署：
+
+```yaml
+services:
+  - type: web
+    name: digit-recognizer
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    plan: free
+```
+
 ## 许可证
 
 MIT License

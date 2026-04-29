@@ -5,6 +5,8 @@ from PIL import Image
 import numpy as np
 import base64
 from io import BytesIO
+import os
+import logging
 
 app = Flask(__name__)
 
@@ -69,4 +71,11 @@ def predict():
     return jsonify({'digit': digit, 'confidence': confidence})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=7860, debug=True)
+    port = int(os.environ.get('PORT', 7860))
+    app.run(host='0.0.0.0', port=port, debug=False)
+
+# For Gunicorn
+if __name__ != '__main__':
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
