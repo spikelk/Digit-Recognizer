@@ -43,9 +43,35 @@ class SimpleCNN(nn.Module):
         x = self.fc2(x)
         return x
 
-def train(model, train_loader, val_loader, criterion, optimizer, device, epochs=5):
+class EarlyStopping:
+    def __init__(self, patience=5, min_delta=0, verbose=True):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.verbose = verbose
+        self.counter = 0
+        self.best_loss = None
+        self.early_stop = False
+    
+    def __call__(self, val_loss):
+        if self.best_loss is None:
+            self.best_loss = val_loss
+        elif val_loss > self.best_loss - self.min_delta:
+            self.counter += 1
+            if self.verbose:
+                print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_loss = val_loss
+            self.counter = 0
+
+def train_with_early_stopping(model, train_loader, val_loader, criterion, optimizer, device, epochs=50, patience=5):
     train_losses = []
     val_losses = []
+    train_accs = []
+    val_accs = []
+    
+    early_stopping = EarlyStopping(patience=patience, verbose=True)
     
     for epoch in range(epochs):
         model.train()
@@ -72,6 +98,7 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, epochs=
         train_loss = running_train_loss / len(train_loader)
         train_acc = 100 * train_correct / train_total
         train_losses.append(train_loss)
+        train_accs.append(train_acc)
         
         model.eval()
         running_val_loss = 0.0
@@ -91,22 +118,41 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, epochs=
         val_loss = running_val_loss / len(val_loader)
         val_acc = 100 * val_correct / val_total
         val_losses.append(val_loss)
+        val_accs.append(val_acc)
         
         print(f'Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%')
+        
+        early_stopping(val_loss)
+        if early_stopping.early_stop:
+            print('Early stopping triggered')
+            break
     
-    return train_losses, val_losses
+    return train_losses, val_losses, train_accs, val_accs, epoch+1
 
-def plot_loss_curve(train_losses, val_losses):
-    plt.figure(figsize=(10, 6))
-    plt.plot(range(1, len(train_losses)+1), train_losses, label='Training Loss', marker='o')
-    plt.plot(range(1, len(val_losses)+1), val_losses, label='Validation Loss', marker='o')
+def plot_comparison(results):
+    plt.figure(figsize=(14, 8))
+    
+    plt.subplot(1, 2, 1)
+    for optimizer_name, data in results.items():
+        plt.plot(range(1, len(data['val_losses'])+1), data['val_losses'], label=f'{optimizer_name} - Val Loss', marker='o')
     plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Training and Validation Loss vs Epoch')
+    plt.ylabel('Validation Loss')
+    plt.title('Validation Loss Comparison')
     plt.legend()
     plt.grid(True)
-    plt.savefig('loss_curve.png')
-    print('Saved loss_curve.png')
+    
+    plt.subplot(1, 2, 2)
+    for optimizer_name, data in results.items():
+        plt.plot(range(1, len(data['val_accs'])+1), data['val_accs'], label=f'{optimizer_name} - Val Acc', marker='o')
+    plt.xlabel('Epoch')
+    plt.ylabel('Validation Accuracy (%)')
+    plt.title('Validation Accuracy Comparison')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    plt.savefig('optimizer_comparison.png')
+    print('Saved optimizer_comparison.png')
 
 def predict(model, test_loader, device):
     model.eval()
@@ -136,19 +182,70 @@ def main():
     test_dataset = MNISTDataset('test.csv', train=False)
     test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
     
-    model = SimpleCNN().to(device)
+    optimizers = {
+        'Adam': optim.Adam,
+        'SGD': optim.SGD,
+        'RMSprop': optim.RMSprop,
+        'Adagrad': optim.Adagrad,
+        'AdamW': optim.AdamW
+    }
     
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    results = {}
+    best_optimizer = None
+    best_val_acc = 0
+    best_model_state = None
     
-    print('Starting training...')
-    train_losses, val_losses = train(model, train_loader, val_loader, criterion, optimizer, device, epochs=10)
+    for optimizer_name, optimizer_class in optimizers.items():
+        print(f'\n{"="*60}')
+        print(f'Training with {optimizer_name} optimizer')
+        print(f'{"="*60}')
+        
+        model = SimpleCNN().to(device)
+        criterion = nn.CrossEntropyLoss()
+        
+        if optimizer_name == 'SGD':
+            optimizer = optimizer_class(model.parameters(), lr=0.01, momentum=0.9)
+        else:
+            optimizer = optimizer_class(model.parameters(), lr=0.001)
+        
+        train_losses, val_losses, train_accs, val_accs, epochs_trained = train_with_early_stopping(
+            model, train_loader, val_loader, criterion, optimizer, device, epochs=50, patience=5
+        )
+        
+        results[optimizer_name] = {
+            'train_losses': train_losses,
+            'val_losses': val_losses,
+            'train_accs': train_accs,
+            'val_accs': val_accs,
+            'final_val_acc': val_accs[-1],
+            'epochs_trained': epochs_trained
+        }
+        
+        if val_accs[-1] > best_val_acc:
+            best_val_acc = val_accs[-1]
+            best_optimizer = optimizer_name
+            best_model_state = model.state_dict().copy()
     
-    print('Plotting loss curve...')
-    plot_loss_curve(train_losses, val_losses)
+    print(f'\n{"="*60}')
+    print('Training Results Summary')
+    print(f'{"="*60}')
     
-    print('Making predictions...')
-    predictions = predict(model, test_loader, device)
+    for optimizer_name, data in results.items():
+        print(f'{optimizer_name}: Final Val Acc = {data["final_val_acc"]:.2f}%, Epochs = {data["epochs_trained"]}')
+    
+    print(f'\nBest optimizer: {best_optimizer} with Val Acc = {best_val_acc:.2f}%')
+    
+    print('\nPlotting comparison...')
+    plot_comparison(results)
+    
+    print('\nSaving best model...')
+    torch.save(best_model_state, 'mnist_cnn.pth')
+    print(f'Saved best model (trained with {best_optimizer}) to mnist_cnn.pth')
+    
+    print('\nMaking predictions with best model...')
+    best_model = SimpleCNN().to(device)
+    best_model.load_state_dict(best_model_state)
+    predictions = predict(best_model, test_loader, device)
     
     submission = pd.DataFrame({
         'ImageId': range(1, len(predictions)+1),
@@ -156,9 +253,6 @@ def main():
     })
     submission.to_csv('sample_submission.csv', index=False)
     print('Saved sample_submission.csv')
-    
-    torch.save(model.state_dict(), 'mnist_cnn.pth')
-    print('Saved model to mnist_cnn.pth')
 
 if __name__ == '__main__':
     main()
