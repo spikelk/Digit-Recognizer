@@ -9,6 +9,7 @@ venv/
 .env/
 .DS_Store
 *.pth
+!mnist_cnn.pth
 *.png
 *.csv
 .vscode/
