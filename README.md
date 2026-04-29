@@ -167,7 +167,7 @@ project/
 | 提交项 | 内容 |
 |--------|------|
 | GitHub 仓库地址 | https://github.com/spikelk/Digit-Recognizer |
-| 在线访问链接 | https://digit-recognizer.onrender.com |
+| 在线访问链接 |  |
 
 ### 2.6 提交清单
 
@@ -203,7 +203,7 @@ project/
 
 | 提交项 | 内容 |
 |--------|------|
-| 在线访问链接 | https://digit-recognizer.onrender.com |
+| 在线访问链接 |  |
 | 实现了哪些加分项 | 手写输入、实时识别、置信度显示 |
 
 ### 3.5 提交清单
@@ -244,7 +244,3 @@ python app.py
 ```
 
 访问 http://localhost:7860 即可使用。
-
-### 在线访问
-
-访问 https://digit-recognizer.onrender.com （Render 免费套餐可能会有冷启动延迟）
